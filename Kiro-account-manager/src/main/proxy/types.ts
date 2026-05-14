@@ -11,6 +11,8 @@ export interface OpenAIChatRequest {
   tools?: OpenAITool[]
   tool_choice?: string | { type: string; function: { name: string } }
   response_format?: { type: string; json_schema?: unknown }
+  thinking?: ClaudeThinkingConfig
+  additionalModelRequestFields?: Record<string, unknown>
   conversation_id?: string
   metadata?: Record<string, unknown>
   kiro_context?: KiroRequestContext
@@ -167,11 +169,16 @@ export interface ClaudeRequest {
   system?: string | ClaudeSystemBlock[]
   tools?: ClaudeTool[]
   tool_choice?: { type: string; name?: string }
-  thinking?: { type: 'enabled'; budget_tokens: number } | { type: 'adaptive'; display?: string } | { type: 'disabled' }
+  thinking?: ClaudeThinkingConfig
   conversation_id?: string
   metadata?: Record<string, unknown>
   kiro_context?: KiroRequestContext
 }
+
+export type ClaudeThinkingConfig =
+  | { type: 'enabled'; budget_tokens: number }
+  | { type: 'adaptive'; display?: string }
+  | { type: 'disabled' }
 
 export interface ClaudeMessage {
   role: 'user' | 'assistant'

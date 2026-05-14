@@ -47,6 +47,44 @@ function mergeCachePoint(
   return first || second
 }
 
+function normalizeThinkingForKiro(thinking: unknown): Record<string, unknown> | undefined {
+  if (!thinking || typeof thinking !== 'object' || Array.isArray(thinking)) return undefined
+
+  const thinkingConfig = thinking as Record<string, unknown>
+  if (thinkingConfig.type === 'disabled') return undefined
+
+  // Kiro API 的 thinking.type 只支持 "adaptive" 和 "disabled"，不支持 "enabled"
+  if (thinkingConfig.type === 'enabled') {
+    return { type: 'adaptive' }
+  }
+
+  return thinkingConfig
+}
+
+function buildAdditionalModelRequestFields(
+  fields?: Record<string, unknown>,
+  thinking?: unknown
+): Record<string, unknown> | undefined {
+  const additionalModelRequestFields = fields ? { ...fields } : {}
+  const normalizedThinking = normalizeThinkingForKiro(thinking ?? additionalModelRequestFields.thinking)
+
+  delete additionalModelRequestFields.thinking
+  if (normalizedThinking) {
+    additionalModelRequestFields.thinking = normalizedThinking
+  }
+
+  return Object.keys(additionalModelRequestFields).length > 0 ? additionalModelRequestFields : undefined
+}
+
+function responseReasoningToThinking(reasoning: unknown): NonNullable<OpenAIChatRequest['thinking']> | undefined {
+  if (!reasoning || typeof reasoning !== 'object' || Array.isArray(reasoning)) return undefined
+
+  const reasoningConfig = reasoning as Record<string, unknown>
+  if (reasoningConfig.effort === 'none' || reasoningConfig.effort === 'disabled') return undefined
+
+  return { type: 'adaptive' }
+}
+
 export function responsesToOpenAIChat(request: OpenAIResponsesRequest): OpenAIChatRequest {
   if (!request || typeof request !== 'object') {
     throw new Error('Responses request body must be an object')
@@ -133,6 +171,8 @@ export function responsesToOpenAIChat(request: OpenAIResponsesRequest): OpenAICh
   if (request.previous_response_id !== undefined) chatRequest.conversation_id = request.previous_response_id
   if (request.metadata !== undefined) chatRequest.metadata = request.metadata
   if (request.kiro_context !== undefined) chatRequest.kiro_context = request.kiro_context
+  const thinking = responseReasoningToThinking(request.reasoning)
+  if (thinking !== undefined) chatRequest.thinking = thinking
   return chatRequest
 }
 
@@ -410,6 +450,10 @@ export function openaiToKiro(
 
   // 转换工具定义
   const kiroTools = convertOpenAITools(request.tools, toolNameRegistry)
+  const additionalModelRequestFields = buildAdditionalModelRequestFields(
+    request.additionalModelRequestFields,
+    request.thinking
+  )
 
   return buildKiroPayload(
     finalContent,
@@ -430,7 +474,8 @@ export function openaiToKiro(
       documents,
       conversationId: request.conversation_id,
       context: request.kiro_context
-    }
+    },
+    additionalModelRequestFields
   )
 }
 
@@ -862,14 +907,7 @@ export function claudeToKiro(
   const kiroTools = convertClaudeTools(request.tools, toolNameRegistry)
 
   // 将 Claude thinking 参数映射为 Kiro additionalModelRequestFields
-  // Kiro API 的 thinking.type 只支持 "adaptive" 和 "disabled"，不支持 "enabled"
-  let additionalModelRequestFields: Record<string, unknown> | undefined
-  if (request.thinking && request.thinking.type !== 'disabled') {
-    const thinking = request.thinking.type === 'enabled'
-      ? { type: 'adaptive' as const }
-      : request.thinking
-    additionalModelRequestFields = { thinking }
-  }
+  const additionalModelRequestFields = buildAdditionalModelRequestFields(undefined, request.thinking)
 
   return buildKiroPayload(
     finalContent,
@@ -990,7 +1028,8 @@ function extractClaudeAssistantContent(
     return {
       content,
       toolUses,
-      reasoningContent: signature ? { reasoningText: { text: thinking, signature } } : { reasoningText: { text: thinking } }
+      // 不传 signature：旧的 thinking signature 在回传给 Kiro API 时会被 Bedrock 拒绝
+      reasoningContent: { reasoningText: { text: thinking } }
     }
   }
 
