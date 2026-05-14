@@ -5,6 +5,10 @@ on:
   push:
     branches: [main]
 
+defaults:
+  run:
+    working-directory: Kiro-account-manager
+
 jobs:
   build-mac:
     runs-on: macos-latest
@@ -15,6 +19,7 @@ jobs:
         with:
           node-version: 22
           cache: npm
+          cache-dependency-path: Kiro-account-manager/package-lock.json
 
       - run: npm install
 
@@ -24,4 +29,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Kiro-Account-Manager-macOS
-          path: dist/*.dmg
+          path: Kiro-account-manager/dist/*.dmg
