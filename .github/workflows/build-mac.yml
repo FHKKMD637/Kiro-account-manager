@@ -22,7 +22,7 @@ jobs:
           cache-dependency-path: Kiro-account-manager/package-lock.json
 
       - name: Install Python setuptools (for native module gyp build)
-        run: python3 -m pip install setuptools
+        run: python3 -m pip install setuptools --break-system-packages
         working-directory: .
 
       - run: npm install
