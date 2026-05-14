@@ -24,7 +24,6 @@ import type {
   KiroToolUse,
   KiroUserInputMessage,
   KiroCachePoint,
-  KiroReasoningContent,
   KiroUsage
 } from './types'
 import { buildKiroPayload, mapModelId } from './kiroApi'
@@ -368,7 +367,9 @@ export function openaiToKiro(
     } else if (msg.role === 'assistant') {
       // Kiro API 要求 content 非空
       let assistantContent = typeof msg.content === 'string' ? msg.content : ''
-      const reasoningContent = msg.reasoning_content?.trim()
+      // Match kiro-gateway behavior: client-side historical reasoning_content is display-only.
+      // Do not send it back to Kiro as reasoningContent, because Bedrock requires a valid
+      // thinking signature bound to the original message structure.
       if (!assistantContent.trim() && msg.tool_calls && msg.tool_calls.length > 0) {
         assistantContent = ' '
       } else if (!assistantContent.trim()) {
@@ -395,7 +396,6 @@ export function openaiToKiro(
       history.push({
         assistantResponseMessage: {
           content: assistantContent,
-          ...(reasoningContent ? { reasoningContent: { reasoningText: { text: reasoningContent } } } : {}),
           toolUses: toolUses.length > 0 ? toolUses : undefined
         }
       })
@@ -840,7 +840,7 @@ export function claudeToKiro(
         }
       }
     } else if (msg.role === 'assistant') {
-      const { content: assistantContent, toolUses, reasoningContent } = extractClaudeAssistantContent(msg, toolNameRegistry)
+      const { content: assistantContent, toolUses } = extractClaudeAssistantContent(msg, toolNameRegistry)
 
       // 如果有 pending 的 user 内容但还没添加到 history，先添加
       if (pendingUserContent.trim() || pendingUserImages.length > 0 || pendingUserDocuments.length > 0 || pendingToolResults.length > 0) {
@@ -867,7 +867,6 @@ export function claudeToKiro(
 
       const assistantResponseMessage = {
         content: assistantContent,
-        ...(reasoningContent ? { reasoningContent } : {}),
         ...(toolUses.length > 0 ? { toolUses } : {})
       }
       history.push({ assistantResponseMessage })
@@ -991,11 +990,9 @@ function extractClaudeContent(msg: ClaudeMessage): { content: string; images: Ki
 function extractClaudeAssistantContent(
   msg: ClaudeMessage,
   toolNameRegistry: ToolNameRegistry
-): { content: string; toolUses: KiroToolUse[]; reasoningContent?: KiroReasoningContent } {
+): { content: string; toolUses: KiroToolUse[] } {
   const toolUses: KiroToolUse[] = []
   let content = ''
-  let thinking = ''
-  let signature: string | undefined
 
   if (typeof msg.content === 'string') {
     content = msg.content
@@ -1003,9 +1000,10 @@ function extractClaudeAssistantContent(
     for (const block of msg.content) {
       if (block.type === 'text' && block.text) {
         content += block.text
-      } else if (block.type === 'thinking' && block.thinking) {
-        thinking += block.thinking
-        signature = block.signature || signature
+      } else if (block.type === 'thinking' || block.type === 'redacted_thinking') {
+        // Historical thinking blocks are not replayable across this proxy's format conversion.
+        // Preserve text/tool_use context only; current-response thinking is still streamed out.
+        continue
       } else if (block.type === 'tool_use' && block.id && block.name) {
         if (!block.input || typeof block.input !== 'object' || Array.isArray(block.input)) {
           throw new Error(`tool_use requires object input: ${block.name}`)
@@ -1022,15 +1020,6 @@ function extractClaudeAssistantContent(
   // Kiro API 要求 content 非空
   if (!content.trim() && toolUses.length > 0) {
     content = ' '
-  }
-
-  if (thinking) {
-    return {
-      content,
-      toolUses,
-      // 不传 signature：旧的 thinking signature 在回传给 Kiro API 时会被 Bedrock 拒绝
-      reasoningContent: { reasoningText: { text: thinking } }
-    }
   }
 
   return { content, toolUses }

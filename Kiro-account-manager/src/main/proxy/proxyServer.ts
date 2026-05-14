@@ -1835,7 +1835,6 @@ export class ProxyServer {
     let toolCallIndex = 0
     const pendingToolCalls: Map<string, { index: number; name: string; arguments: string }> = new Map()
     let collectedContent = ''
-    let collectedReasoningContent = ''
     // 发送初始 chunk（仅首轮）
     if (currentRound === 0) {
       const initialChunk = createOpenaiStreamChunk(id, model, { role: 'assistant' })
@@ -1849,7 +1848,6 @@ export class ProxyServer {
         (text, toolUse, isThinking) => {
           if (text && text.trim()) {
             if (isThinking) {
-              collectedReasoningContent += text
               // 原生 thinking 内容 → 输出为 reasoning_content
               const chunk = createOpenaiStreamChunk(id, model, { reasoning_content: text })
               res.write(`data: ${JSON.stringify(chunk)}\n\n`)
@@ -1937,9 +1935,6 @@ export class ProxyServer {
                   {
                     assistantResponseMessage: {
                       content: collectedContent || 'I will continue with the task.',
-                      ...(collectedReasoningContent.trim() ? {
-                        reasoningContent: { reasoningText: { text: collectedReasoningContent } }
-                      } : {}),
                       ...(pendingToolCalls.size > 0 ? {
                         toolUses: Array.from(pendingToolCalls.entries()).map(([toolId, toolData]) => ({
                           toolUseId: toolId,
@@ -2143,7 +2138,6 @@ export class ProxyServer {
     let hasStartedThinkingBlock = false
     let pendingThinkingSignature: string | undefined
     let collectedContent = ''
-    let collectedReasoningContent = ''
     const pendingToolCalls: Map<string, { name: string; input: Record<string, unknown> }> = new Map()
 
     const flushThinkingSignature = () => {
@@ -2183,7 +2177,6 @@ export class ProxyServer {
         (text, toolUse, isThinking, reasoningSignature) => {
           if (text && text.trim()) {
             if (isThinking) {
-              collectedReasoningContent += text
               // 原生 thinking 内容 → 输出为 Anthropic thinking block
               if (hasStartedTextBlock) {
                 const blockStop = createClaudeStreamEvent('content_block_stop', { index: currentBlockIndex })
@@ -2347,9 +2340,6 @@ export class ProxyServer {
                   {
                     assistantResponseMessage: {
                       content: collectedContent || 'I will continue with the task.',
-                      ...(collectedReasoningContent.trim() ? {
-                        reasoningContent: { reasoningText: { text: collectedReasoningContent } }
-                      } : {}),
                       ...(pendingToolCalls.size > 0 ? {
                         toolUses: Array.from(pendingToolCalls.entries()).map(([toolId, toolData]) => ({
                           toolUseId: toolId,
