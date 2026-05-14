@@ -27,10 +27,16 @@ jobs:
 
       - run: npm install
 
-      - name: Build macOS DMG
-        run: npm run build:mac
+      - name: Build macOS app (unpacked)
+        run: npx electron-vite build && npx electron-builder --mac --dir
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Package .app as tar.gz
+        run: tar czf ../Kiro-Account-Manager-macOS-arm64.tar.gz -C dist/mac-arm64 .
+        working-directory: Kiro-account-manager
 
       - uses: actions/upload-artifact@v4
         with:
           name: Kiro-Account-Manager-macOS
-          path: Kiro-account-manager/dist/*.dmg
+          path: Kiro-Account-Manager-macOS-arm64.tar.gz
