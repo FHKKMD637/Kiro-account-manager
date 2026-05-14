@@ -21,6 +21,10 @@ jobs:
           cache: npm
           cache-dependency-path: Kiro-account-manager/package-lock.json
 
+      - name: Install Python setuptools (for native module gyp build)
+        run: python3 -m pip install setuptools
+        working-directory: .
+
       - run: npm install
 
       - name: Build macOS DMG
