@@ -862,9 +862,13 @@ export function claudeToKiro(
   const kiroTools = convertClaudeTools(request.tools, toolNameRegistry)
 
   // 将 Claude thinking 参数映射为 Kiro additionalModelRequestFields
+  // Kiro API 的 thinking.type 只支持 "adaptive" 和 "disabled"，不支持 "enabled"
   let additionalModelRequestFields: Record<string, unknown> | undefined
   if (request.thinking && request.thinking.type !== 'disabled') {
-    additionalModelRequestFields = { thinking: request.thinking }
+    const thinking = request.thinking.type === 'enabled'
+      ? { type: 'adaptive' as const }
+      : request.thinking
+    additionalModelRequestFields = { thinking }
   }
 
   return buildKiroPayload(
